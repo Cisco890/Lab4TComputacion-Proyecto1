@@ -1,6 +1,6 @@
 # Lab4TComputacion
 
-**Autores:** Joel Antonio Jaquez López (23369) y Juan Francisco Martínez (2361)  
+**Autores:** Joel Antonio Jaquez López (23369) y Juan Francisco Martínez (23617)  
 **Curso:** Teoría de la Computación - UVG
 
 ## Descripción del Ejercicio 1
@@ -72,7 +72,7 @@ Demostrar que el lenguaje A = {yy | y ∈ {0,1}*} NO es regular usando el Pumpin
 
 
 ## Enlace al video de Youtube
-
+https://youtu.be/xGkwjTew0hI
 ## Imágenes de los AFN por expresión regular
 - (a∗|b∗)+: <img width="1298" height="383" alt="Image" src="https://github.com/user-attachments/assets/c38b10bf-8166-4911-96a1-2f4fbe46b844" />
 - ((ε|a)|b∗)∗: <img width="1298" height="345" alt="Image" src="https://github.com/user-attachments/assets/cd2b19dc-7fa1-42e5-8e9e-cd8ae4adcf15" />
