@@ -20,11 +20,13 @@ class Estado:
         self.es_final = False
         self.transiciones = {}
     
+    # Con esta funcion puedo decir con que letra moverme a otro estado
     def agregar_transicion(self, simbolo, estado_destino):
         if simbolo not in self.transiciones:
             self.transiciones[simbolo] = []
         self.transiciones[simbolo].append(estado_destino)
 
+# Caja principal donde guardo todo un autómata
 class AFN:
     def __init__(self):
         self.estado_inicial = None
@@ -33,21 +35,60 @@ class AFN:
         self.alfabeto = set()
         self.contador_estados = 0
     
+    # Funcion que me permite crear nuevos estados
     def nuevo_estado(self):
         estado = Estado(self.contador_estados)
         self.contador_estados += 1
         self.estados.append(estado)
         return estado
     
+    # Funcion que me permite agregar simbolos al alfabeto, a excepción de epsilon
     def agregar_simbolo(self, simbolo):
         if simbolo != 'ε' and simbolo != '𝜀':
             self.alfabeto.add(simbolo)
 
+# Clase para representar el estado del AFD
+class EstadoAFD:
+    def __init__(self, id_estado, conjunto_estados_afn):
+        self.id = id_estado
+        # Para comparar IDs
+        self.conjunto_afn = frozenset(estado.id for estado in conjunto_estados_afn)
+        self.estados_afn = conjunto_estados_afn
+        self.es_final = any(estado.es_final for estado in conjunto_estados_afn)
+        self.transiciones = {}
+    
+    def agregar_transicion(self, simbolo, estado_destino):
+        self.transiciones[simbolo] = estado_destino
+    
+    def __repr__(self):
+        return f"q{self.id}({sorted(self.conjunto_afn)})"
+
+# Clase principal para el AFD
+class AFD:
+    def __init__(self):
+        self.estado_inicial = None
+        self.estados_finales = []
+        self.estados = []
+        self.alfabeto = set()
+        self.contador_estados = 0
+    
+    def nuevo_estado(self, conjunto_estados_afn):
+        estado = EstadoAFD(self.contador_estados, conjunto_estados_afn)
+        self.contador_estados += 1
+        self.estados.append(estado)
+
+        if estado.es_final:
+            self.estados_finales.append(estado)
+        
+        return estado
+
+# La clase fragmento, permite definir el estado inicial y final del AFN
 class FragmentoAFN:
     def __init__(self, estado_inicial, estado_final):
         self.inicio = estado_inicial
         self.fin = estado_final
-    
+
+# Funcion que permite leer un AST y contruir el AFN
 def construir_thompson_afn(ast):
     if not ast:
         return None
@@ -160,6 +201,90 @@ def clausura_epsilon(estados, afn):
                     pila.append(estado_destino)
     return clausura
 
+# Funcion para construccion de Subconjuntos
+# Esta funcion implementa el algoritmo de construccion de subconjuntos para pasar de AFN a AFD
+def construir_afd_subconjuntos(afn):
+    if not afn or not afn.estado_inicial:
+        return None
+    
+    print("\n=== CONSTRUCCIÓN DE SUBCONJUNTOS (AFN -> AFD) ===")
+    afd = AFD()
+    afd.alfabeto = afn.alfabeto.copy()
+
+    # Paso 1: Estado inicial
+    clausura_inicial = clausura_epsilon([afn.estado_inicial], afn)
+    estado_inicial_afd = afd.nuevo_estado(clausura_inicial)
+    afd.estado_inicial = estado_inicial_afd
+
+    print (f"Estado Inicial del AFD: {estado_inicial_afd}")
+
+    # Estructuras para el algoritmo
+    estados_por_procesar = [estado_inicial_afd]
+    conjuntos_visitados = {estado_inicial_afd.conjunto_afn: estado_inicial_afd}
+
+    # Paso 2: Procesar cada estado el AFD
+    while estados_por_procesar:
+        estado_actual = estados_por_procesar.pop(0)
+        print(f"\nProcesando estado: {estado_actual}")
+
+        # Para cada simbolo del alfabeto
+        for simbolo in afd.alfabeto:
+            # Paso 3: Calcular el conjunto de estados alcanzables
+            estados_destino = set()
+
+            for estado_afn in estado_actual.estados_afn:
+                if simbolo in estado_afn.transiciones:
+                    for destino in estado_afn.transiciones[simbolo]:
+                        estados_destino.add(destino)
+            
+            
+            if estados_destino:
+                # Paso 4: Calcular clausura epsilon del conjunto destino
+                clausura_destino = clausura_epsilon(list(estados_destino), afn)
+                conjunto_ids = frozenset(estado.id for estado in clausura_destino)
+
+                # Verificar si este conjunto ya existe
+                if conjunto_ids in conjuntos_visitados:
+                    estado_destino_afd = conjuntos_visitados[conjunto_ids]
+                
+                else:
+                    # Crear nuevo estado del AFD
+                    estado_destino_afd = afd.nuevo_estado(clausura_destino)
+                    conjuntos_visitados[conjunto_ids] = estado_destino_afd
+                    estados_por_procesar.append(estado_destino_afd)
+                    print(f"  Nuevo estado creado: {estado_destino_afd}")
+                
+                # Agregar transicion
+                estado_actual.agregar_transicion(simbolo, estado_destino_afd)
+                print(f"  Transición: {estado_actual} --{simbolo}--> {estado_destino_afd}")
+        
+    print(f"\n=== AFD CONSTRUIDO ===")
+    print(f"Estados totales: {len(afd.estados)}")
+    print(f"Estados finales: {len(afd.estados_finales)}")
+    print(f"Alfabeto: {afd.alfabeto}")
+    
+    return afd
+
+# Funcion de simulacion del AFD
+def simular_afd(afd, cadena):
+    if not afd or not afd.estado_inicial:
+        return False
+    
+    estado_actual = afd.estado_inicial
+    print(f"Estado inicial AFD: {estado_actual}")
+
+    for i, simbolo in enumerate(cadena):
+        if simbolo in estado_actual.transiciones:
+            estado_actual = estado_actual.transiciones[simbolo]
+            print(f"Después de '{simbolo}': {estado_actual}")
+        else:
+            print(f"No hay transición con '{simbolo}' desde {estado_actual}")
+            return False
+    
+    # Verificar si el estado final es de aceptacion
+    return estado_actual.es_final
+
+
 def simular_afn(afn, cadena):
     if not afn or not afn.estado_inicial:
         return False
@@ -219,6 +344,38 @@ def dibujar_afn(afn, nombre_archivo):
 
     dot.render(nombre_archivo, format='png', cleanup=True)
     print(f"AFN guardado como: {nombre_archivo}.png")
+
+# Funcion para dibujar el AFD con Graphviz
+def dibujar_afd(afd, nombre_archivo):
+    if not afd:
+        return
+    
+    dot = graphviz.Digraph(comment='AFD (Construcción de Subconjuntos)')
+    dot.attr(rankdir='LR')
+    dot.attr(ranksep='1.5')
+
+    # Agregar los nodos
+    for estado in afd.estados:
+        # Etiqueta con el ID del estado AFD y los estados AFN que contiene
+        etiqueta = f"q{estado.id}\\n{{{','.join(map(str, sorted(estado.conjunto_afn)))}}}"
+
+        if estado.es_final:
+            dot.node(str(estado.id), etiqueta, shape='doublecircle')
+        else:
+            dot.node(str(estado.id), etiqueta, shape='circle')
+
+    # Marcar el estado inicial
+    if afd.estado_inicial:
+        dot.node('inicio_afd', '', shape='none', width='0', height='0')
+        dot.edge('inicio_afd', str(afd.estado_inicial.id))
+    
+    # Agregar transiciones
+    for estado in afd.estados:
+        for simbolo, estado_destino in estado.transiciones.items():
+            dot.edge(str(estado.id), str(estado_destino.id), label=simbolo)
+
+    dot.render(nombre_archivo, format='png', cleanup=True)
+    print(f"AFD guardado como: {nombre_archivo}.png")
 
 # Funcion que se encargará de convertir el postfix en un árbol
 def construir_AST(postfix):
@@ -440,10 +597,18 @@ def infix_to_postfix(regex):
             print(f"AFN construido con {len(afn.estados)} estados")
             print(f"Alfabeto: {afn.alfabeto}")
 
-            return afn
+            # Contruccion de AFD con la construccion de subconjuntos
+            print("Construyendo AFD con algoritmo de subconjuntos...")
+            afd = construir_afd_subconjuntos(afn)
+
+            if afd:
+                nombre_afd = f"afd_linea_{regex.replace('*','_').replace('|','_').replace('(','').replace(')','').replace('?','_').replace('+','_')}"
+                dibujar_afd(afd, nombre_afd)
+
+            return afn, afd
 
     print()
-    return None
+    return None, None
 
 
 # Funcion main que se encarga de verificar que se haya pasado el nombre del archivo como argumento
@@ -456,6 +621,7 @@ def main():
     
     archivo = sys.argv[1]
     afns_generados = []
+    afds_generados = []
     expresiones = []
 
     try:
@@ -465,37 +631,57 @@ def main():
                 if not linea:
                     continue
                 print(f"=== Línea {idx} ===")
-                afn =infix_to_postfix(linea)
+                afn, afd =infix_to_postfix(linea)
                 if afn:
                     afns_generados.append(afn)
+                    afds_generados.append(afd)
                     expresiones.append(linea)
         
         if afns_generados:
             print("================")
-            print("SIMULACION DE AFN")
+            print("SIMULACION DE AUTOMATAS")
             print("================")
 
             while True:
-                print("===== AFN Disponibles ====")
+                print("===== AUTOMATAS Disponibles ====")
                 for i, expr in enumerate(expresiones, 1):
                     print(f"{i}. {expr}")
                 print("0. Salir")
 
                 try:
-                    opcion = int(input("Selecciona el AFN a usar (numero): "))
+                    opcion = int(input("Selecciona el autómata a usar (numero): "))
 
                     if opcion == 0:
                         print("Gracias por probar la simulacion")
                         break
                     elif 1 <= opcion <= len(afns_generados):
                         afn_seleccionado = afns_generados[opcion - 1]
+                        afd_seleccionado = afds_generados[opcion - 1]
                         expresion_seleccionada = expresiones[opcion - 1]
 
-                        print(f"Simulando AFN de {expresion_seleccionada}")
+                        print(f"Simulando autómatas de {expresion_seleccionada}")
                         cadena = input("Escribe la cadena a evaluar: ")
-                        resultado = simular_afn(afn_seleccionado, cadena)
-                        respuesta = "SI" if resultado else "NO"
-                        print(f"¿'{cadena}' ∈ L({expresion_seleccionada})? {respuesta}")
+
+                        #Simulacion del AFN
+                        print("\n--- SIMULACIÓN AFN ---")
+                        resultado_afn = simular_afn(afn_seleccionado, cadena)
+                        respuesta_afn = "SI" if resultado_afn else "NO"
+                        print(f"AFN: ¿'{cadena}' ∈ L({expresion_seleccionada})? {respuesta_afn}")
+
+
+                        # SIMULACIÓN AFD
+                        if afd_seleccionado:
+                            print("\n--- SIMULACIÓN AFD ---")
+                            resultado_afd = simular_afd(afd_seleccionado, cadena)
+                            respuesta_afd = "SI" if resultado_afd else "NO"
+                            print(f"AFD: ¿'{cadena}' ∈ L({expresion_seleccionada})? {respuesta_afd}")
+                            
+                            # Verificar que ambos dan el mismo resultado
+                            if resultado_afn == resultado_afd:
+                                print("✓ AFN y AFD dan el mismo resultado")
+                            else:
+                                print("✗ ERROR: AFN y AFD dan resultados diferentes")
+                        
                     else:
                         print("Opción no válida. Intenta de nuevo")
                 
