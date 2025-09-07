@@ -1,7 +1,7 @@
-#####################################################################################################
-# Joel Antonio Jaquez López - 23369  y Juan Francisco Martínez - 2361                               #
-# Laboratorio 4, Ejercicio 1 Algoritmo de Shunting Yard con arbol sintactico e implementación de AFN#
-#####################################################################################################
+#################################################################################################################
+# Joel Antonio Jaquez López - 23369  y Juan Francisco Martínez - 2361                                           #
+# Proyecto 1 - Implementacion ShutingYard, Thompson (AFN), Subconjuntos(AFD), Minimizacion de AFD y Simulaciones#
+#################################################################################################################
 
 import sys
 import graphviz
@@ -189,10 +189,8 @@ def construir_thompson_afn(ast):
 def clausura_epsilon(estados, afn):
     clausura = set(estados)
     pila = list(estados)
-
     while pila:
         estado_actual = pila.pop()
-
 
         if 'ε' in estado_actual.transiciones:
             for estado_destino in estado_actual.transiciones['ε']:
@@ -265,6 +263,263 @@ def construir_afd_subconjuntos(afn):
     
     return afd
 
+# Minimizacion del AFD
+def minimizar_afd(afd):
+    if not afd or not afd.estado_inicial:
+        return None
+    
+    print("=== MINIMIZACION DEL AFD ===")
+
+    # Paso 1: Eliminar estados inalcanzables
+    afd_sin_inalcanzables = eliminar_estados_inalcanzables(afd)
+
+    # Paso 2: Eliminar estados muertos
+    afd_sin_muertos = eliminar_estados_muertos(afd_sin_inalcanzables)
+
+    # Paso 3: Algoritmo de particionamiento
+    afd_minimizado = algoritmo_particionamiento(afd_sin_muertos)
+    print(f"AFD minimizado tiene {len(afd_minimizado.estados)} estados")
+    print(f"Estados finales minimizados: {len(afd_minimizado.estados_finales)}")
+    
+    return afd_minimizado
+
+# Eliminar estados inalcanzables
+def eliminar_estados_inalcanzables(afd):
+    if not afd.estado_inicial:
+        return afd
+    
+    # Encontrar estados alcanzables desde el estado inicial
+    alcanzables = set()
+    cola = [afd.estado_inicial]
+    alcanzables.add(afd.estado_inicial)
+
+    while cola:
+        estado_actual = cola.pop(0)
+        for simbolo, estado_destino in estado_actual.transiciones.items():
+            if estado_destino not in alcanzables:
+                alcanzables.add(estado_destino)
+                cola.append(estado_destino)
+    
+    # Crar nuevo AFD con estados alcanzables
+    afd_limpio = AFD()
+    afd_limpio.alfabeto = afd.alfabeto.copy()
+    afd_limpio.estado_inicial = afd.estado_inicial
+
+    # Visualizar estados nuevos y viejos
+    mapeo_estados = {}
+    for estado in alcanzables:
+        nuevo_estado = EstadoAFD(len(afd_limpio.estados), estado.estados_afn)
+        nuevo_estado.es_final = estado.es_final
+        afd_limpio.estados.append(nuevo_estado)
+        mapeo_estados[estado] = nuevo_estado
+
+        if estado.es_final:
+            afd_limpio.estados_finales.append(nuevo_estado)
+    
+    # Actualizar estado inicial
+    afd_limpio.estado_inicial = mapeo_estados[afd.estado_inicial]
+
+    # Transiciones
+    for estado_viejo, estado_nuevo in mapeo_estados.items():
+        for simbolo, destino_viejo in estado_viejo.transiciones.items():
+            if destino_viejo in mapeo_estados:
+                estado_nuevo.transiciones[simbolo] = mapeo_estados[destino_viejo]
+    
+    afd_limpio.contador_estados = len(afd_limpio.estados)
+    return afd_limpio
+
+# Eliminar estados muertos
+def eliminar_estados_muertos(afd):
+    estados_vivos = set(afd.estados_finales)
+    cambio = True
+
+    # Iterar hasta que no haya cambios
+    while cambio:
+        cambio = False
+        for estado in afd.estados:
+            if estado not in estados_vivos:
+                # Asegurarse de que puede llegar a un estado vivo
+                for simbolo, destino in estado.transiciones.items():
+                    if destino in estados_vivos:
+                        estados_vivos.add(estado)
+                        cambio = True
+                        break
+    
+    # Si el estado inicial no esta vivo, el lenguaje es vacío
+    if afd.estado_inicial not in estados_vivos:
+        # Crear AFD vacío
+        afd_vacio = AFD()
+        afd_vacio.alfabeto = afd.alfabeto.copy()
+        estado_trampa = afd_vacio.nuevo_estado([])
+        afd_vacio.estado_inicial = estado_trampa
+        return afd_vacio
+    
+    # Crear nuevo AFD con estados vivos
+    afd_limpio = AFD()
+    afd_limpio.alfabeto = afd.alfabeto.copy()
+
+    # Volvemos a visualizar estados nuevos y viejos
+    mapeo_estados = {}
+    for estado in estados_vivos:
+        nuevo_estado = EstadoAFD(len(afd_limpio.estados), estado.estados_afn)
+        nuevo_estado.es_final = estado.es_final
+        afd_limpio.estados.append(nuevo_estado)
+        mapeo_estados[estado] = nuevo_estado
+
+        if estado.es_final:
+            afd_limpio.estados_finales.append(nuevo_estado)
+    
+    # Actualizar el estado inicial
+    afd_limpio.estado_inicial = mapeo_estados[afd.estado_inicial]
+
+    # Actualizar transiciones
+    for estado_viejo, estado_nuevo in mapeo_estados.items():
+        for simbolo, destino_viejo in estado_viejo.transiciones.items():
+            if destino_viejo in mapeo_estados:
+                estado_nuevo.transiciones[simbolo] = mapeo_estados[destino_viejo]
+    
+    afd_limpio.contador_estados = len(afd_limpio.estados)
+    return afd_limpio
+
+# Algoritmo de particionamiento para minimizacion del AFD
+def algoritmo_particionamiento(afd):
+    if not afd.estados:
+        return afd
+    
+    print("ALGORITMO DE PARTICIONAMIENTO")
+
+    # Particion inicial de estados
+    finales = set(afd.estados_finales)
+    no_finales = set(afd.estados) - finales
+
+    # Crear particiones
+    particiones = []
+    if finales:
+        particiones.append(finales)
+    if no_finales:
+        particiones.append(no_finales)
+
+    # Iterar hasta que no haya cambios
+    iteracion = 0
+    while True:
+        iteracion += 1
+
+        nuevas_particiones = []
+        hubo_cambio = False
+
+        # Dividir particiones
+        for particion in particiones:
+            subparticiones = dividir_particion(particion, particiones, afd.alfabeto)
+
+            # Si hay subparticiones, se ha producido un cambio
+            if len(subparticiones) > 1:
+                hubo_cambio = True
+                nuevas_particiones.extend(subparticiones)
+            else:
+                nuevas_particiones.append(particion)
+        
+        particiones = nuevas_particiones
+
+        if not hubo_cambio:
+            break
+    return construir_afd_minimizado(afd, particiones)
+
+# Función para dividir una partición en subparticiones basadas en transiciones
+def dividir_particion(particion, todas_particiones, alfabeto):
+    if len(particion) <= 1:
+        return [particion]
+    
+    grupos = {}
+
+    # Crear una "firma" para cada estado basada en sus transiciones
+    for estado in particion:
+        firma = []
+        for simbolo in sorted(alfabeto):
+            if simbolo in estado.transiciones:
+                destino = estado.transiciones[simbolo]
+
+                # Encontrar a qué partición pertenece el estado destino
+                particion_destino = -1
+                for i, p in enumerate(todas_particiones):
+                    if destino in p:
+                        particion_destino = i
+                        break
+                firma.append((simbolo, particion_destino))
+            else:
+                firma.append((simbolo, -1))
+
+        # Crear una "firma" para cada estado basada en sus transiciones
+        firma_tupla = tuple(firma)
+        if firma_tupla not in grupos:
+            grupos[firma_tupla] = set()
+        grupos[firma_tupla].add(estado)
+    
+    return list(grupos.values())
+
+# Construir el AFD minimizado a partir de las particiones
+def construir_afd_minimizado(afd_original, particiones):
+    afd_min = AFD()
+    afd_min.alfabeto = afd_original.alfabeto.copy()
+
+    # Visualizar cada particion de lo nuevo
+    mapeo_particion_estado = {}
+
+    for i, particion in enumerate(particiones):
+        # Tomar un representante de la particion
+        representante = next(iter(particion))
+
+        # Nuevo estado minimizado
+        conjunto_afn_combinado = set()
+        for estado in particion:
+            conjunto_afn_combinado.update(estado.conjunto_afn)
+
+        # Crear un nuevo estado minimizado
+        nuevo_estado = EstadoAFD(i, [])
+        nuevo_estado.conjunto_afn = frozenset(conjunto_afn_combinado)
+        nuevo_estado.es_final = representante.es_final
+
+        afd_min.estados.append(nuevo_estado)
+
+        particion_hashable = frozenset(particion)
+        mapeo_particion_estado[particion_hashable] = nuevo_estado
+
+        # Marcar estado final si alguno en la particion es final
+        if nuevo_estado.es_final:
+            afd_min.estados_finales.append(nuevo_estado)
+        
+        # Actualizar estado inicial
+        if afd_original.estado_inicial in particion:
+            afd_min.estado_inicial = nuevo_estado
+
+    # Crear transiciones entre los nuevos estados minimizados
+    for i, particion in enumerate(particiones):
+        particion_hashable = frozenset(particion)
+        estado_min = mapeo_particion_estado[particion_hashable]
+        representante = next(iter(particion))
+  
+        for simbolo in afd_min.alfabeto:
+            if simbolo in representante.transiciones:
+                destino_original = representante.transiciones[simbolo]
+
+                # Encontrar a qué partición pertenece el estado destino
+                particion_destino = None
+                for p in particiones:
+                    if destino_original in p:
+                        particion_destino = p
+                        break
+                
+                # Agregar la transición si se encontró la partición destino
+                if particion_destino:
+                    particion_destino_hashable = frozenset(particion_destino)
+                    estado_destino_min = mapeo_particion_estado[particion_destino_hashable]
+                    estado_min.agregar_transicion(simbolo, estado_destino_min)
+
+    afd_min.contador_estados = len(afd_min.estados)
+    return afd_min
+
+
+# SIMULACIONES
+
 # Funcion de simulacion del AFD
 def simular_afd(afd, cadena):
     if not afd or not afd.estado_inicial:
@@ -315,7 +570,12 @@ def simular_afn(afn, cadena):
             return True
         
     return False
-    
+
+def simular_afd_minimizado(afd_min, cadena):
+    return simular_afd(afd_min, cadena)
+
+# VISUALIZACIONES
+
 def dibujar_afn(afn, nombre_archivo):
     if not afn:
         return
@@ -376,6 +636,33 @@ def dibujar_afd(afd, nombre_archivo):
 
     dot.render(nombre_archivo, format='png', cleanup=True)
     print(f"AFD guardado como: {nombre_archivo}.png")
+
+def dibujar_afd_minimizado(afd, nombre_archivo):
+    if not afd:
+        return
+    
+    dot = graphviz.Digraph(comment='AFD Minimizado')
+    dot.attr(rankdir='LR')
+    dot.attr(ranksep='1.5')
+    dot.attr('node', style='filled', fillcolor='lightblue')
+
+    for estado in afd.estados:
+        etiqueta = f"q{estado.id}'"
+
+        if estado.es_final:
+            dot.node(str(estado.id), etiqueta, shape='doublecircle', fillcolor='lightgreen')
+        else:
+            dot.node(str(estado.id), etiqueta, shape='circle')
+    
+    if afd.estado_inicial:
+        dot.node('inicio_min', '', shape='none', width='0', height='0')
+        dot.edge('inicio_min', str(afd.estado_inicial.id))
+    
+    for estado in afd.estados:
+        for simbolo, estado_destino in estado.transiciones.items():
+            dot.edge(str(estado.id), str(estado_destino.id), label=simbolo)
+    dot.render(nombre_archivo, format='png', cleanup=True)
+    print(f"AFD Minimizado guardado como: {nombre_archivo}.png")
 
 # Funcion que se encargará de convertir el postfix en un árbol
 def construir_AST(postfix):
@@ -448,6 +735,8 @@ def dibujar_ast(raiz, nombre_archivo):
     dot.render(nombre_archivo, format='png', cleanup=True)
     print(f"Árbol guardado como: {nombre_archivo}.png")
 
+
+# ALGORITMO DE SHUNTING YARD
 
 # Primero defino una función que explica la precedencia de los opereadores
 # Los más importantes son los que tienen un número mayor (es decir los de abajo)
@@ -585,14 +874,18 @@ def infix_to_postfix(regex):
     print("Construyendo AST")
     ast = construir_AST(postfix)
     if ast:
-        nombre_archivo = f"ast_linea_{regex.replace('*','_').replace('|','_').replace('(','').replace(')','').replace('?','_').replace('+','_')}"
+        nombre_base = regex.replace('*','_').replace('|','_').replace('(','').replace(')','').replace('?','_').replace('+','_')
+
+        # Dibujar el AST
+        nombre_archivo = f"ast_linea_{nombre_base}"
         dibujar_ast(ast, nombre_archivo)
 
+        # Contruir AFN con Thompson
         print("Construyendo AFN con el algoritmo de Thompson...")
         afn = construir_thompson_afn(ast)
 
         if afn:
-            nombre_afn = f"afn_linea_{regex.replace('*','_').replace('|','_').replace('(','').replace(')','').replace('?','_').replace('+','_')}"
+            nombre_afn = f"afn_linea_{nombre_base}"
             dibujar_afn(afn, nombre_afn)
             print(f"AFN construido con {len(afn.estados)} estados")
             print(f"Alfabeto: {afn.alfabeto}")
@@ -602,13 +895,22 @@ def infix_to_postfix(regex):
             afd = construir_afd_subconjuntos(afn)
 
             if afd:
-                nombre_afd = f"afd_linea_{regex.replace('*','_').replace('|','_').replace('(','').replace(')','').replace('?','_').replace('+','_')}"
+                nombre_afd = f"afd_linea_{nombre_base}"
                 dibujar_afd(afd, nombre_afd)
 
-            return afn, afd
+                # Minimizacion del AFD
+                print("Minimizando AFD...")
+                afd_min = minimizar_afd(afd)
+
+                if afd_min:
+                    nombre_afd_min = f"afd_min_linea_{nombre_base}"
+                    dibujar_afd_minimizado(afd_min, nombre_afd_min)
+                    print(f"AFD minimizado con {len(afd_min.estados)} estados")
+
+            return afn, afd, afd_min
 
     print()
-    return None, None
+    return None, None, None
 
 
 # Funcion main que se encarga de verificar que se haya pasado el nombre del archivo como argumento
@@ -622,6 +924,7 @@ def main():
     archivo = sys.argv[1]
     afns_generados = []
     afds_generados = []
+    afds_minimizados = []
     expresiones = []
 
     try:
@@ -631,10 +934,11 @@ def main():
                 if not linea:
                     continue
                 print(f"=== Línea {idx} ===")
-                afn, afd =infix_to_postfix(linea)
+                afn, afd, afd_min =infix_to_postfix(linea)
                 if afn:
                     afns_generados.append(afn)
                     afds_generados.append(afd)
+                    afds_minimizados.append(afd_min)
                     expresiones.append(linea)
         
         if afns_generados:
@@ -657,17 +961,24 @@ def main():
                     elif 1 <= opcion <= len(afns_generados):
                         afn_seleccionado = afns_generados[opcion - 1]
                         afd_seleccionado = afds_generados[opcion - 1]
+                        afd_min_seleccionado = afds_minimizados[opcion - 1]
                         expresion_seleccionada = expresiones[opcion - 1]
 
                         print(f"Simulando autómatas de {expresion_seleccionada}")
                         cadena = input("Escribe la cadena a evaluar: ")
+
+                        print("=========")
+                        print(f"Evaluando: '{cadena}' en L({expresion_seleccionada})")
+                        print("=========")
+
+                        resultados = []
 
                         #Simulacion del AFN
                         print("\n--- SIMULACIÓN AFN ---")
                         resultado_afn = simular_afn(afn_seleccionado, cadena)
                         respuesta_afn = "SI" if resultado_afn else "NO"
                         print(f"AFN: ¿'{cadena}' ∈ L({expresion_seleccionada})? {respuesta_afn}")
-
+                        resultados.append(("AFN", resultado_afn))
 
                         # SIMULACIÓN AFD
                         if afd_seleccionado:
@@ -675,12 +986,38 @@ def main():
                             resultado_afd = simular_afd(afd_seleccionado, cadena)
                             respuesta_afd = "SI" if resultado_afd else "NO"
                             print(f"AFD: ¿'{cadena}' ∈ L({expresion_seleccionada})? {respuesta_afd}")
+                            resultados.append(("AFD", resultado_afd))
+                        
+                        # SIMUACIÓN AFD MINIMIZADO
+                        if afd_min_seleccionado:
+                            print("\n--- SIMULACIÓN AFD MINIMIZADO ---")
+                            resultado_afd_min = simular_afd_minimizado(afd_min_seleccionado, cadena)
+                            respuesta_afd_min = "SI" if resultado_afd_min else "NO"
+                            print(f"AFD Minimizado: ¿'{cadena}' ∈ L({expresion_seleccionada})? {respuesta_afd_min}")
+                            resultados.append(("AFD Min", resultado_afd_min))
                             
-                            # Verificar que ambos dan el mismo resultado
-                            if resultado_afn == resultado_afd:
-                                print("✓ AFN y AFD dan el mismo resultado")
-                            else:
-                                print("✗ ERROR: AFN y AFD dan resultados diferentes")
+                        print("=====================")
+                        print("Verificacion de resultados:")
+                        print("=====================")
+                        
+                        todos_iguales = all(resultado == resultados[0][1] for _, resultado in resultados)
+                        if todos_iguales:
+                            print("Todos los automatas dan el mismo resultado")
+                            print(f"Resultado final: {respuesta_afn}")
+                        else:
+                            print("Error, Los automatas dan resultados diferentes")
+                            for nombre, resultado in resultados:
+                                print(f"{nombre}: {'SI' if resultado else 'NO'}")
+                        
+                        print("=====================")
+                        print("RESUMEN FINAL DE LOS AUTOMATAS: ")
+                        print("=====================")
+                        print(f"AFN: {len(afn_seleccionado.estados)} estados")
+                        print(f"AFD: {len(afd_seleccionado.estados)} estados")
+                        print(f"AFD Minimizado: {len(afd_min_seleccionado.estados)} estados")
+
+                        reduccion = ((len(afd_seleccionado.estados) - len(afd_min_seleccionado.estados)) / len(afd_seleccionado.estados)) * 100
+                        print(f"Reduccion: {reduccion:.1f}%")
                         
                     else:
                         print("Opción no válida. Intenta de nuevo")
