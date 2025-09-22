@@ -92,3 +92,6 @@ python Ejercicio1/Proyecto1.py Ejercicio1/expresiones.txt
 3. Sigue las instrucciones en pantalla para simular cadenas y visualizar los autómatas.
 
 ---
+
+## Enlace al video de Youtube
+https://youtu.be/d124eMaWTfY
